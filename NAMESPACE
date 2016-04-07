@@ -1,92 +1,34 @@
-import(
-    methods,
-    BiocParallel,
-    pROC
-)
-importFrom("IRanges", IRanges)
-importFrom("compiler", cmpfun)
-importFrom("deSolve", ode)
-importFrom("rootSolve", multiroot)
-importFrom("preprocessCore", normalize.quantiles)
-importClassesFrom("Biobase",
-    AnnotatedDataFrame,
-    ExpressionSet
-    )
-importFrom("Biobase",
-    combine,
-    exprs,
-    fData,
-    pData,
-    featureNames,
-    "featureNames<-",
-    ExpressionSet
-    )
-importFrom("GenomicFeatures",
-    exonsBy,
-    transcriptsBy,
-    intronsByTranscript
-    )
-importFrom("GenomicRanges",
-    reduce,
-    setdiff,
-    seqnames,
-    start,
-    end,
-    strand,
-    unlist,
-    width
-    )
-export(
-    "newINSPEcT",
-    "makeRPKMs"
-)
-exportMethods(
-    "[",
-    "AIC",
-    "chisqmodel",
-    "chisqtest",
-    "combine",
-    "dim",
-    "featureNames",
-    "featureNames<-",
-    "geneClass",
-    "getModel",
-    "getModel<-",
-    "inHeatmap",
-    "labeledSF",
-    "llrtests",
-    "llrtests<-",
-    "logLik",
-    "makeExonsGtfFromDb",
-    "makeIntronsGtfFromDb",
-    "makeModelRates",
-    "makeSimDataset",
-    "makeSimModel",
-    "modelingParams",
-    "modelingParams<-",
-    "modelRates",
-    "modelSelection",
-    "modelSelection<-",
-    "nCores",
-    "nCores<-",
-    "nGenes",
-    "nTpts",
-    "plotGene",
-    "ratePvals",
-    "ratesFirstGuess",
-    "ratesFirstGuessVar",
-    "removeModel",
-    "rocCurve",
-    "rocThresholds",
-    "sfPlot",
-    "show",
-    "thresholds",
-    "thresholds<-",
-    "totalSF",
-    "tpts",
-    "viewModelRates"
-)
-exportClasses(
-    "INSPEcT",
-     "INSPEcT_model" 
-)
+import("methods","Biobase","BiocParallel","pROC")
+
+importFrom("BiocGenerics", "unlist", "plotMA")
+importFrom("compiler", "cmpfun")
+importFrom("deSolve", "ode")
+importFrom("GenomicAlignments", "readGAlignmentPairs", "readGAlignments")
+importFrom("GenomicFeatures","exonsBy","transcriptsBy","intronsByTranscript")
+importFrom("GenomicRanges","reduce","seqnames","start","end","strand","width","findOverlaps")
+importFrom("graphics", "abline", "axis", "image", "layout", "legend","matplot", "par", "points", "smoothScatter")
+importFrom("grDevices", "colorRampPalette")
+importFrom("IRanges", "IRanges", "psetdiff")
+importFrom("preprocessCore", "normalize.quantiles")
+importFrom("rootSolve", "multiroot")
+importFrom("Rsamtools", "ScanBamParam")
+importFrom("S4Vectors","subjectHits","queryHits","queryLength","elementNROWS")
+importFrom("stats", "approx", "dist", "ecdf", "hclust", "lm","na.omit", "optim", "optimize", "pchisq", "pnorm","quantile", "rnorm", "runif", "splinefun", "uniroot", "p.adjust", "pt")
+importFrom("utils", "capture.output", "read.table", "write.table", "head")
+
+export("newINSPEcT", "makeRPKMs")
+exportMethods( "[", "chisqmodel", "chisqtest", "combine", "compareSteady", "degradation", "dim", 
+    "featureNames", "featureNames<-", "geneClass", "getModel", "getModel<-", "inHeatmap", "labeledSF", 
+    "llrtests", "llrtests<-", "logLik", "makeModelRates", "makeSimDataset", 
+    "makeSimModel", "modelingParams", "modelingParams<-", "modelRates", 
+    "modelSelection", "modelSelection<-", "nGenes", "nTpts", "processing", "plotGene", "plotMA",
+    "ratePvals", "ratesFirstGuess", "ratesFirstGuessVar", "removeModel", 
+    "rocCurve", "rocThresholds", "sfPlot", "show", "synthesis", "thresholds", "thresholds<-", 
+    "totalSF", "tpts", "viewModelRates")
+exportClasses("INSPEcT", "INSPEcT_model", "INSPEcT_diffsteady" )
+
+
+
+
+
+

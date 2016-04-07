@@ -2,8 +2,12 @@
 {
 	cvLogTpts <- function(a , tpts) {
 		newtime <- log2(tpts + a )
-		stats::sd(diff(newtime)) / mean(diff(newtime))}
-	optimize(f=cvLogTpts, interval=c(0,5), tpts=tpts )$minimum
+		stats::sd(diff(newtime)) / mean(diff(newtime))
+	}
+	if( length(tpts)>2 )
+		return(optimize(f=cvLogTpts, interval=c(0,5), tpts=tpts )$minimum)
+	else
+		return(1)
 }
 
 .time_transf <- function(t, log_shift) 
@@ -13,7 +17,7 @@
 } 
 
 .getRatesAndConcentrationsFromRpkms <- function(totRpkms, labeledRpkms, tpts
-	, tL=NULL, degDuringPulse=FALSE, simulatedData=FALSE, parallelize=TRUE
+	, tL=NULL, degDuringPulse=FALSE, simulatedData=FALSE, BPPARAM=bpparam() #parallelize=TRUE
 	, totalMedianNorm=TRUE, labeledMedianNorm=FALSE, totalSF=NULL, labeledSF=NULL
 	, steadyStateMode=0) 
 {
@@ -26,20 +30,6 @@
 	## the control during the workflow will be based on the 
 	## negation of simulatedData (that is realData)
 	realData <- !simulatedData
-
-	## set parameters for the parallel mode
-	if( parallelize ) {
-		maxcores <- parallel::detectCores()
-		if( Sys.info()[['sysname']] == 'Windows' ) {
-			applyfun <- bplapply
-			options(MulticoreParam=SnowParam(workers=maxcores))
-			# print(bpparam())
-		} else {
-			applyfun <- parallel::mclapply
-			options(mc.cores=maxcores)
-			# print(bpparam())
-		}
-	} else applyfun <- lapply
 
 	## eventually set the 'simple' mode
 	if( is.null(totRpkms$introns) | is.null(labeledRpkms$introns) ) 
@@ -142,19 +132,6 @@
 
 		}
 
-		## in case varince is still null (meaning that the user
-		## didn't provided one) calculate it now
-
-		# ## scale the 4sU according to the labelling time
-		# Lexo <- Lexo/tL
-		# if( !onlyExonsMode )
-		# 	Tint <- Tint/tL
-		# if( labeledVarince ) {
-		# 	Lexo_var <- Lexo_var/tL^2
-		# 	if( !onlyExonsMode )
-		# 		Lint_var <- Lint_var/tL^2
-		# }
-
 		#########################
 		#### scale 4sU rpkms ###
 		#########################
@@ -213,99 +190,15 @@
 			if( ncol(TexoDer)>1 ) TexoDer <- t(TexoDer)
 			if( steadyStateMode == 0 ) TexoDer[, 1] <- 0
 
-			if( degDuringPulse ) {
+			if( labeledMedianNorm )
+				warning('When introns of labelled and total fraction are provided normalization of 
+					labelled fraction is computed internally. "labeledMedianNorm" argument is ignored.')
 
-				if( labeledMedianNorm )
-					warning('When introns of labelled and total fraction are provided normalization of 
-						labelled fraction is computed internally. "labeledMedianNorm" argument is ignored.')
-
-				if( !is.null(labeledSF) )
-					warning('When introns of labelled and total fraction are provided normalization of 
-						labelled fraction is computed internally. "labeledSF" argument is ignored.')
-
-				message('Calculating scaling factor between total and 4su libraries...')
-
-				## select the 500 most synthesized genes at time zero
-				## to calculate the scaling factor
-				if( nrow(Lexo) > 500 ) {
-					geneSubset <- order(Texo[,1],decreasing=TRUE)[1:500]
-				} else {
-					geneSubset <- 1:nrow(Lexo)
-				}
-
-				## degradation during pulse
-				# system with 4su scaling factor as a 4th variable to be identified
-				initOneGene <- function(i, j) {
-					c(
-						Lexo[i,j]/tL
-						,(Lexo[i,j]/tL-TexoDer[i,j])/(Texo[i,j]-Tint[i,j])
-						,(Lexo[i,j]/tL-TintDer[i,j])/Tint[i,j]
-						)	
-				}
-				sys4suScale <- function(x) {
-					y <- numeric(4)
-					y[1] <- TintDer[i,j] - x[1] + x[3]*Tint[i,j]
-					y[2] <- TexoDer[i,j] - x[1] + x[2]*(Texo[i,j]-Tint[i,j])
-					y[3] <- x[4]*Lint[i,j] - x[1]/x[3]*(1-exp(-x[3]*tL))
-					y[4] <- x[4]*Lexo[i,j] - (x[1]*exp(-x[2]*tL)*(x[3]^2-x[2]^2*exp((x[2]-x[3])*tL)+
-						x[2]^2*exp(x[2]*tL)-x[3]^2*exp(x[2]*tL)))/(x[2]*(x[2]-x[3])*x[3])
-					y
-				}
-				## get only 4sU scales
-				nGenes <- nrow(Lexo)
-				nTpts <- ncol(Lexo)
-				labeledSfep <- matrix(NA, nrow=nGenes, ncol=nTpts)
-				labeledSf <- matrix(NA, nrow=nGenes, ncol=nTpts)
-				capture.output(suppressWarnings({
-					for( i in geneSubset ) {
-						for( j in 1:nTpts ) {
-							init <- initOneGene(i,j)
-							# if( all(is.finite(init)) ) {
-							mrOut <- tryCatch(
-								multiroot(
-									sys4suScale
-									, c(init,.5)
-									# , control = list(maxit=1e3)
-									# , positive=TRUE
-									)
-								, error=function(e)
-									list(
-										root=rep(NA, 4)
-										, estim.precis=NA
-										)
-									)
-							labeledSf[i,j] <- mrOut$root[4]
-							labeledSfep[i,j] <- mrOut$estim.precis
-							# } else {
-							# 	labeledSf[i,j] <- NA
-							# 	labeledSfep[i,j] <- NA
-							# }
-						}
-					}
-				}))
-				
-				## chose the best resolved genes to estimate 
-				## from them the scale factor
-				epTsh <- apply(labeledSfep,2,quantile,probs=.75,na.rm=TRUE)
-				ix <- t(apply(labeledSfep,1, function(x) x>epTsh))
-				labeledSf[ix] <- NA
-				labeledSF <- apply(labeledSf, 2, stats::median, na.rm=TRUE)
-
-				# Lexo <- t(t(Lexo)*labeledSF)
-				# if( labeledVarince )
-				# 	Lexo_var <- apply(t(t(Lexo_var)*labeledSF^2), 1, mean, na.rm=TRUE)
-				# else
-				# 	Lexo_var <- apply(Lexo, 1, speedyVar)
-
-			} else {
-
-				if( labeledMedianNorm )
-					warning('When introns of labelled and total fraction are provided normalization of 
-						labelled fraction is computed internally. "labeledMedianNorm" argument is ignored.')
-
-				if( !is.null(labeledSF) )
-					warning('When introns of labelled and total fraction are provided normalization of 
-						labelled fraction is computed internally. "labeledSF" argument is ignored.')
+			if( !is.null(labeledSF) ){
+				warning('When introns of labelled and total fraction are provided normalization of 
+					labelled fraction could be computed internally.')
+				labeledSF_prior <- labeledSF
+			} else{				
 
 				message('Calculating scaling factor between total and 4su libraries...')
 
@@ -346,23 +239,101 @@
 				# (force the first time point to have derivative zero )
 				# estimate of alpha and gamma from 4sU data
 
-				gammaTC <- sapply(
+				gammaTC <- do.call('cbind',bplapply(
 					1:length(tpts), function(j) 
-						unlist(applyfun(1:nrow(Lint), 
+						sapply(1:nrow(Lint), 
 							function(i, Lint, Lexo, tL) fGamma(Lint[i,j] , Lexo[i,j] , tL)
-							, Lint=Lint, Lexo=Lexo, tL=tL ))
-						) 
+							, Lint=Lint, Lexo=Lexo, tL=tL)
+						,BPPARAM=BPPARAM))
 				# scale factor 
-				labeledSF <- sapply(1:ncol(Tint), function(j)
+				labeledSF_prior <- sapply(1:ncol(Tint), function(j)
 					optimize(sq.median.resids, c(0.01,100), P=Tint[,j], dP=TintDer[,j], 
 						alpha=Lexo[,j]/tL, gamma=gammaTC[,j] )$minimum)
-				# scaling (only on Lexo, gammaTC is independent to scaling factor )
+			}
 
-				# Lexo <- t(t(Lexo)*labeledSF)
-				# if( labeledVarince )
-				# 	Lexo_var <- apply(t(t(Lexo_var)*labeledSF^2), 1, mean, na.rm=TRUE)
-				# else
-				# 	Lexo_var <- apply(Lexo, 1, speedyVar)
+			if( degDuringPulse ) {
+
+				if( labeledMedianNorm )
+					warning('When introns of labelled and total fraction are provided normalization of 
+						labelled fraction is computed internally. "labeledMedianNorm" argument is ignored.')
+
+				if( !is.null(labeledSF) )
+					warning('When introns of labelled and total fraction are provided normalization of 
+						labelled fraction is computed internally. "labeledSF" argument is ignored.')
+
+				# message('Calculating scaling factor between total and 4su libraries...')
+
+				## select the 500 most synthesized genes at time zero
+				## to calculate the scaling factor
+				if( nrow(Lexo) > 500 ) {
+					geneSubset <- order(Texo[,1],decreasing=TRUE)[1:500]
+				} else {
+					geneSubset <- 1:nrow(Lexo)
+				}
+
+				## re-calculate scaling factor
+
+				## degradation during pulse
+				# system with 4su scaling factor as a 4th variable to be identified
+				initOneGene <- function(i, j) {
+					c(
+						Lexo[i,j]/tL
+						,(Lexo[i,j]/tL-TexoDer[i,j])/(Texo[i,j]-Tint[i,j])
+						,(Lexo[i,j]/tL-TintDer[i,j])/Tint[i,j]
+						)	
+				}
+				sys4suScale <- function(x) {
+					y <- numeric(4)
+					y[1] <- TintDer[i,j] - x[1] + x[3]*Tint[i,j]
+					y[2] <- TexoDer[i,j] - x[1] + x[2]*(Texo[i,j]-Tint[i,j])
+					y[3] <- x[4]*Lint[i,j] - x[1]/x[3]*(1-exp(-x[3]*tL))
+					y[4] <- x[4]*Lexo[i,j] - (x[1]*exp(-x[2]*tL)*(x[3]^2-x[2]^2*exp((x[2]-x[3])*tL)+
+						x[2]^2*exp(x[2]*tL)-x[3]^2*exp(x[2]*tL)))/(x[2]*(x[2]-x[3])*x[3])
+					y/c(x[1],x[1],x[4]*Lint[i,j],x[4]*Lexo[i,j])
+				}
+				## get only 4sU scales
+				nGenes <- nrow(Lexo)
+				nTpts <- ncol(Lexo)
+				labeledSfep <- matrix(NA, nrow=nGenes, ncol=nTpts)
+				labeledSf <- matrix(NA, nrow=nGenes, ncol=nTpts)
+				capture.output(suppressWarnings({
+					for( i in geneSubset ) {
+						for( j in 1:nTpts ) {
+							init <- initOneGene(i,j)*labeledSF_prior[j]
+							# if( all(is.finite(init)) ) {
+							mrOut <- tryCatch(
+								multiroot(
+									sys4suScale
+									, c(init,labeledSF_prior[j])
+									# , control = list(maxit=1e3)
+									# , positive=TRUE
+									)
+								, error=function(e)
+									list(
+										root=rep(NA, 4)
+										, estim.precis=NA
+										)
+									)
+							labeledSf[i,j] <- mrOut$root[4]
+							labeledSfep[i,j] <- mrOut$estim.precis
+							# } else {
+							# 	labeledSf[i,j] <- NA
+							# 	labeledSfep[i,j] <- NA
+							# }
+						}
+					}
+				}))
+				
+				## chose the best resolved genes to estimate 
+				## from them the scale factor
+				epTsh <- apply(labeledSfep,2,quantile,probs=.75,na.rm=TRUE)
+				ix <- t(apply(labeledSfep,1, function(x) x>epTsh))
+				labeledSf[ix] <- NA
+				labeledSF <- apply(labeledSf, 2, stats::median, na.rm=TRUE)
+
+			} else {
+
+				labeledSF <- labeledSF_prior
 
 			}
 
@@ -386,7 +357,7 @@
 			Tint_var <- apply( Tint , 1 , speedyVar )
 		}
 		# scaling factor for synthetic dataset is meaningless
-		labeledSF <- rep(1, length(tpts))
+		totalSF <- labeledSF <- rep(1, length(tpts))
 
 		# derivatives from time course
 		TintDer <- as.matrix(sapply(1:nrow(Tint), 
@@ -444,8 +415,8 @@
 			## degradation during pulse
 			initOneGene <- function(i, j) {
 				c(
-					Lexo[i,j]/tL
-					,(Lexo[i,j]/tL-TexoDer[i,j])/Texo[i,j]
+					Lexo[i,j]*labeledSF[j]/tL
+					,(Lexo[i,j]*labeledSF[j]/tL-TexoDer[i,j])/Texo[i,j]
 					)	
 			}
 			sys4suSmall <- function(x) {
@@ -457,7 +428,7 @@
 			## get only the rates
 			nGenes <- nrow(Lexo)
 			nTpts <- ncol(Lexo)
-			labeledSfep <- matrix(NA, nrow=nGenes, ncol=nTpts)
+			ratesEstimPrec <- matrix(NA, nrow=nGenes, ncol=nTpts)
 			alphaTC <- matrix(NA, nrow=nGenes, ncol=nTpts)
 			betaTC <- matrix(NA, nrow=nGenes, ncol=nTpts)
 			capture.output(suppressWarnings({
@@ -479,7 +450,7 @@
 									, estim.precis=NA
 									)
 								)
-						labeledSfep[i,j] <- mrOut$estim.precis
+						ratesEstimPrec[i,j] <- mrOut$estim.precis
 						alphaTC[i,j] <- mrOut$root[1]
 						betaTC[i,j] <- mrOut$root[2]
 						# } else {
@@ -519,45 +490,6 @@
 					'% of the degradation rates are negative. Putting them to NA.'))
 			}
 			betaTC[ix] <- NA
-
-			## some rates are unbelivably large, respect to the assumption
-			## that no degradation occurs during the pulse
-			## based on an aprroximated assumtion of what is the expected
-			## ratio between the two we discard the ones that have a ratio 
-			## superior than the threshold
-			approxExpectedRatio <- function(beta, tL) {
-				beta*tL/(1-exp(-beta*tL))
-			}
-			## ratio between median accounts for the conversion between the scaling factors
-			## of the noDegr mode and the Degr mode
-			noDegrAlphaTC <- Lexo/tL
-			noDegrAlphaTC <- noDegrAlphaTC*
-				stats::median(alphaTC, na.rm=TRUE)/stats::median(noDegrAlphaTC, na.rm=TRUE)
-			measuredRatio <- alphaTC/noDegrAlphaTC
-			qt <- seq(.9,1,by=.001)
-			res <- numeric(length(qt))
-			for(i in 1:length(qt)) {
-				q <- qt[i]
-				tOut <- table(
-					measuredRatio>
-						approxExpectedRatio(
-							quantile(betaTC, na.rm=TRUE, probs=q)
-							, tL)
-						)
-				res[i] <- tOut['FALSE']/sum(tOut)
-			}
-			if( all(res>qt) ) {
-				# plot(qt, res, type='l')
-				# abline(0,1,col='red')
-				warning('Too many rates are over the expected using degDuringPulse mode.')
-			}
-			tsh <- qt[min(which(res>qt))]
-			tshRatio <- approxExpectedRatio(
-				quantile(betaTC, na.rm=TRUE, probs=tsh)
-				, tL)
-
-			alphaTC[measuredRatio>tshRatio] <- NA
-			betaTC[measuredRatio>tshRatio] <- NA
 
 			## recalculate the variance
 			if( labeledVarince )
@@ -590,9 +522,8 @@
 						defintsol(t0, t1, mAlpha, qAlpha, beta )
 				}
 				maxBetas <- seq(5, maxBeta, by=5)
-				# applyfun <- if( parallel ) bplapply else lapply
-				sapply(2:length(tpts), function(j) {
-					unlist(applyfun(1:nrow(alpha),
+				bplapply(2:length(tpts), function(j) {
+					unlist(lapply(1:nrow(alpha),
 						function(i) {
 							k <- 1
 							solutionFound <- FALSE
@@ -606,14 +537,17 @@
 										, alpha_t1 = alpha[i,j]
 										, X_t0 = totalRNA[i,j-1]
 										, X_t1 = totalRNA[i,j]
-										)$root
+										)#$root
 									solutionFound = TRUE
 									}, silent=TRUE)
 								k <- k + 1
 							}
-							if( solutionFound ) return(solution) else return(NA)
+							if( solutionFound ) 
+								return(solution) 
+							else 
+								return(list(root=NA, estim.prec=NA))
 						}))
-					})
+					}, BPPARAM=BPPARAM)
 			}
 			## calculate alpha and recalculate the variance
 			alphaTC <- Lexo/tL
@@ -626,10 +560,18 @@
 			if( steadyStateMode == 1 ) TexoDer[,1] <- 0
 			betaT0 <- ( alphaTC[,1] - TexoDer[,1] ) / Texo[,1]
 			betaT0[betaT0 < 0 | !is.finite(betaT0)] <- NA
-			if( length(tpts)>1 )
+			if( length(tpts)>1 ) {
+				betaOut <- inferKBetaFromIntegral(tpts, alphaTC, Texo)
 				betaTC <- cbind(betaT0, 
-					inferKBetaFromIntegral(tpts, alphaTC, Texo))
-			else betaTC <- as.matrix(betaT0)
+					sapply(betaOut, function(x) x[names(x)=='root'])
+					)
+				ratesEstimPrec <- cbind(0,
+					sapply(betaOut, function(x) x[names(x)=='estim.prec'])
+					)
+			} else {
+				betaTC <- as.matrix(betaT0)
+				ratesEstimPrec <- matrix(0, nrow=nrow(betaTC), ncol=ncol(betaTC))
+			}
 			## set preMRNA and gamma to NA
 			Tint <- matrix(NA, nrow(Texo), ncol(Texo))
 			Tint_var <- rep(NA, length(Texo_var))
@@ -655,9 +597,9 @@
 			## once set the scale factor calculate the rates
 			initOneGene <- function(i, j) {
 				c(
-					Lexo[i,j]/tL
-					,(Lexo[i,j]/tL-TexoDer[i,j])/(Texo[i,j]-Tint[i,j])
-					,(Lexo[i,j]/tL-TintDer[i,j])/Tint[i,j]
+					Lexo[i,j]*labeledSF[j]/tL
+					,(Lexo[i,j]*labeledSF[j]/tL-TexoDer[i,j])/(Texo[i,j]-Tint[i,j])
+					,(Lexo[i,j]*labeledSF[j]/tL-TintDer[i,j])/Tint[i,j]
 					)	
 			}
 			sys4su <- function(x, labeledSF) {
@@ -671,14 +613,13 @@
 			## get only the rates
 			nGenes <- nrow(Lexo)
 			nTpts <- ncol(Lexo)
-			labeledSfep <- matrix(NA, nrow=nGenes, ncol=nTpts)
+			ratesEstimPrec <- matrix(NA, nrow=nGenes, ncol=nTpts)
 			alphaTC <- matrix(NA, nrow=nGenes, ncol=nTpts)
 			betaTC <- matrix(NA, nrow=nGenes, ncol=nTpts)
 			gammaTC <- matrix(NA, nrow=nGenes, ncol=nTpts)
 			capture.output(suppressWarnings({
 				for( i in 1:nGenes ) {
 					for( j in 1:nTpts ) {
-						init <- initOneGene(i,j)
 						# if( all(is.finite(init)) ) {
 						mrOut <- tryCatch(
 							multiroot(
@@ -694,7 +635,7 @@
 									, estim.precis=NA
 									)
 								)
-						labeledSfep[i,j] <- mrOut$estim.precis
+						ratesEstimPrec[i,j] <- mrOut$estim.precis
 						alphaTC[i,j] <- mrOut$root[1]
 						betaTC[i,j] <- mrOut$root[2]
 						gammaTC[i,j] <- mrOut$root[3]
@@ -708,90 +649,22 @@
 				}
 			}))
 
-			# ## keep only the best resolved rates (put to NA the worst 10%
-			# ## of rates in time points later than zero)
-			# epTsh <- apply(labeledSfep,2,quantile,probs=.9,na.rm=TRUE)
-			# ix <- t(apply(labeledSfep,1, function(x) x>epTsh))
-			# ix[,1] <- FALSE
-			# alphaTC[ix] <- NA
-			# betaTC[ix] <- NA
-			# gammaTC[ix] <- NA
-
 			## put negative values to NA and rise a 
 			## warning if they are more than 20% of a specific rate
-			## synthesis
-			ix <- alphaTC<0
+			ix <- alphaTC<0 | betaTC<0 | gammaTC<0
 			negativePerc <- length(which(ix))/length(ix)*100
 			if( negativePerc>20 ) {
 				warning(paste(round(negativePerc), 
-					'% of the synthesis rates are negative. Putting them to NA.'))
+					'% of the genes contains negative rates. Putting them to NA.'))
 			}
 			alphaTC[ix] <- NA
-			## degradation
-			ix <- betaTC<0
-			negativePerc <- length(which(ix))/length(ix)*100
-			if( negativePerc>20 ) {
-				warning(paste(round(negativePerc), 
-					'% of the degradation rates are negative. Putting them to NA.'))
-			}
 			betaTC[ix] <- NA
-			## synthesis
-			ix <- gammaTC<0
-			negativePerc <- length(which(ix))/length(ix)*100
-			if( negativePerc>20 ) {
-				warning(paste(round(negativePerc), 
-					'% of the processing rates are negative. Putting them to NA.'))
-			}
 			gammaTC[ix] <- NA
-
-			## some rates are unbelivably large, respect to the assumption
-			## that no degradation occurs during the pulse
-			## based on an aprroximated assumtion of what is the expected
-			## ratio between the two we discard the ones that have a ratio 
-			## superior than the threshold
-			approxExpectedRatio <- function(beta, tL) {
-				beta*tL/(1-exp(-beta*tL))
-			}
-			## ratio between median accounts for the conversion between the scaling factors
-			## of the noDegr mode and the Degr mode
-			noDegrAlphaTC <- Lexo/tL
-			noDegrAlphaTC <- noDegrAlphaTC*
-				stats::median(alphaTC, na.rm=TRUE)/stats::median(noDegrAlphaTC, na.rm=TRUE)
-			measuredRatio <- alphaTC/noDegrAlphaTC
-			qt <- seq(.9,1,by=.001)
-			res <- numeric(length(qt))
-			for(i in 1:length(qt)) {
-				q <- qt[i]
-				tOut <- table(
-					measuredRatio>
-						approxExpectedRatio(
-							quantile(betaTC, na.rm=TRUE, probs=q)
-							, tL)
-						)
-				res[i] <- tOut['FALSE']/sum(tOut)
-			}
-			if( all(res>qt) ) {
-				# plot(qt, res, type='l')
-				# abline(0,1,col='red')
-				warning('Too many rates are over the expected using degDuringPulse mode.')
-			}
-			tsh <- qt[min(which(res>qt))]
-			tshRatio <- approxExpectedRatio(
-				quantile(betaTC, na.rm=TRUE, probs=tsh)
-				, tL)
-
-			alphaTC[measuredRatio>tshRatio] <- NA
-			betaTC[measuredRatio>tshRatio] <- NA
-			gammaTC[measuredRatio>tshRatio] <- NA
+			ratesEstimPrec[ix] <- NA
 
 			## recalculate the variance
 			if( labeledVarince )
-				alphaTC_var <- Lexo_var/tL^2
-			else
-				alphaTC_var <- apply(alphaTC, 1, speedyVar)
-			alphaTC <- t(t(alphaTC)*labeledSF)
-			if( labeledVarince )
-				alphaTC_var <- apply(t(t(alphaTC_var)*labeledSF^2), 1, mean, na.rm=TRUE)
+				alphaTC_var <- apply(t(t(Lexo_var)*(labeledSF/tL)^2), 1, mean, na.rm=TRUE)
 			else
 				alphaTC_var <- apply(alphaTC, 1, speedyVar)
 
@@ -829,9 +702,8 @@
 						beta * defintsol(t0, t1, mPreMRNA, qPreMRNA, beta )
 				}
 				maxBetas <- seq(5, maxBeta, by=5)
-				# applyfun <- if( parallel ) bplapply else lapply
-				sapply(2:length(tpts), function(j) {
-					unlist(applyfun(1:nrow(total), function(i) {
+				bplapply(2:length(tpts), function(j) {
+					unlist(lapply(1:nrow(total), function(i) {
 						k <- 1
 						solutionFound <- FALSE
 						while((!solutionFound) & k <= length(maxBetas)) {
@@ -846,14 +718,14 @@
 									, X_t1 = total[i,j]
 									, P_t0 = preMRNA[i,j-1]
 									, P_t1 = preMRNA[i,j]
-									)$root
+									)
 								solutionFound = TRUE
 								}, silent=TRUE)
 							k <- k + 1
 						}
-						if( solutionFound ) return(solution) else return(NA)
+						if( solutionFound ) return(solution) else return(list(root=NA, estim.prec=NA))
 					}))
-				})
+				}, BPPARAM=BPPARAM)
 			}
 
 			# calculate alpha and recalculate the variance
@@ -873,10 +745,18 @@
 			if( steadyStateMode == 1 ) TexoDer[,1] <- 0
 			betaT0 <- ( alphaTC[,1] - TexoDer[,1] ) / (Texo[,1] - Tint[,1] )
 			betaT0[betaT0 < 0 | !is.finite(betaT0)] <- NA
-			if( length(tpts)>1 )
-				betaTC <- cbind(betaT0
-					, inferKBetaFromIntegralWithPre(tpts, alphaTC, Texo, Tint))
-			else betaTC <- as.matrix(betaT0)
+			if( length(tpts)>1 ) {
+				betaOut <- inferKBetaFromIntegralWithPre(tpts, alphaTC, Texo, Tint)
+				betaTC <- cbind(betaT0, 
+					sapply(betaOut, function(x) x[names(x)=='root'])
+					)
+				betaEstimPrec <- cbind(0,
+					sapply(betaOut, function(x) x[names(x)=='estim.prec'])
+					)
+			} else {
+				betaTC <- as.matrix(betaT0)
+				betaEstimPrec <- matrix(0, nrow=nrow(betaTC), ncol=ncol(betaTC))
+			}
 
 			###################################
 			## estimate processing rates #########
@@ -903,10 +783,9 @@
 						defintsol(t0, t1, mAlpha, qAlpha, beta )
 				}
 				maxGammas <- seq(5, maxGamma, by=5)
-				# applyfun <- if( parallel ) bplapply else lapply
-				sapply(2:length(tpts), function(j)
+				bplapply(2:length(tpts), function(j)
 					{
-						unlist(applyfun(1:nrow(alpha), function(i) {
+						unlist(lapply(1:nrow(alpha), function(i) {
 							k <- 1
 							solutionFound <- FALSE
 							while((!solutionFound) & k <= length(maxGammas)) {
@@ -919,24 +798,38 @@
 										, alpha_t1 = alpha[i,j]
 										, X_t0 = preMRNA[i,j-1]
 										, X_t1 = preMRNA[i,j]
-										)$root
+										)
 									solutionFound = TRUE
 									}, silent=TRUE)
 								k <- k + 1
 							}
-							if( solutionFound ) return(solution) else return(NA)
+							if( solutionFound )
+								return(solution)
+							else
+								return(list(root=NA, estim.prec=NA))
 						}))
-					})
+					}, BPPARAM=BPPARAM)
 			}
 			# calculate gamma (from  total RNA introns and alphas )
 			message('Estimating processing rates...')
 			if( steadyStateMode == 1 ) TintDer[,1] <- 0
 			gammaT0 <- ( alphaTC[,1] - TintDer[,1] ) / Tint[,1]
 			gammaT0[gammaT0 < 0 | !is.finite(gammaT0)] <- NA
-			if( length(tpts)>1 )
-				gammaTC <- cbind(gammaT0
-					, inferKGammaFromIntegral(tpts, alphaTC, Tint))
-			else gammaTC <- as.matrix(gammaT0)
+			if( length(tpts)>1 ) {
+				gammaOut <- inferKGammaFromIntegral(tpts, alphaTC, Tint)
+				gammaTC <- cbind(gammaT0, 
+					sapply(gammaOut, function(x) x[names(x)=='root'])
+					)
+				gammaEstimPrec <- cbind(0,
+					sapply(gammaOut, function(x) x[names(x)=='estim.prec'])
+					)
+			} else {
+				gammaTC <- as.matrix(gammaT0)
+				gammaEstimPrec <- matrix(0, nrow=nrow(gammaTC), ncol=ncol(gammaTC))
+			}
+
+			ratesEstimPrec <- betaEstimPrec + gammaEstimPrec
+
 		}
 
 	# end of intron-exons mode
@@ -952,6 +845,7 @@
 	attr(alphaTC_var, 'names') <- NULL
 	attr(Texo_var, 'names') <- NULL
 	attr(Tint_var, 'names') <- NULL
+	attr(ratesEstimPrec, 'dimnames') <- NULL
 
 	## return scaled results and rates (adding NA values 
 	## for preMRNA and gamma)
@@ -966,6 +860,7 @@
 			, alpha_var=alphaTC_var
 			, beta=betaTC
 			, gamma=gammaTC)
+		, ratesEstimPrec=ratesEstimPrec
 		, geneNames=geneNames
 		, tpts=tpts
 		, labeledSF=labeledSF
@@ -1082,18 +977,12 @@
 }
 
 .inspect.engine <- function(tpts, log_shift, concentrations, rates
-	, nInit=10, nIter=300, na.rm=TRUE, nCores=2L
+	, nInit=10, nIter=300, na.rm=TRUE, BPPARAM=bpparam() #nCores=2L
 	, verbose=TRUE, estimateRatesWith=c('der', 'int'), nAttempts=1
 	, sigmoidDegradation=FALSE, sigmoidSynthesis=FALSE, sigmoidTotal=FALSE
 	, sigmoidProcessing=FALSE, sigmoidPre=FALSE
 	, testOnSmooth=TRUE, seed=NULL)
 {
-
-	chisq <- function(experiment, model, variance=NULL)
-	{
-		if( is.null(variance)) variance <- stats::var(experiment)
-		sum((experiment - model)^2/variance)
-	}
 
 	chisq.test.inspect <- function(D, df)
 		pchisq(D, df, lower.tail=TRUE)
@@ -1489,7 +1378,7 @@
 								, .impulseModelP=.impulseModelP
 								, .polynomialModelP=.polynomialModelP
 								)
-							, error=function(e) return(.emptyGene(e)))
+							, error=function(e) return(.emptyGene(e)$beta))
 						, gamma=if( intExMode ) { tryCatch(
 							.chooseModel(tpts=tpts
 								, log_shift=log_shift
@@ -1504,7 +1393,7 @@
 								, .sigmoidModelP=.sigmoidModelP
 								, .impulseModelP=.impulseModelP
 								, .polynomialModelP=.polynomialModelP
-								), error=function(e) return(.emptyGene(e)))
+								), error=function(e) return(.emptyGene(e)$gamma))
 							} else { NULL }
 						)
 				ratesToTest <- list('0'=constantRates
@@ -1615,21 +1504,9 @@
 	## MAIN FUNCTION ###
 	##################
 
-	if( nCores > 1 ) {
-		nCores <- min(nCores, parallel::detectCores())
-		if( Sys.info()[['sysname']] == 'Windows' ) {
-			applyfun <- bplapply
-			options(MulticoreParam=SnowParam(workers=nCores))
-			# print(bpparam())
-		} else {
-			applyfun <- parallel::mclapply
-			options(mc.cores=nCores)
-			# print(bpparam())
-		}
-	} else applyfun <- lapply
 	nGenes <- nrow(rates$alpha)
 	tpts <- tpts
-	paramSpecs <- applyfun(1:nGenes, modelOneGene, seed=seed, 
+	paramSpecs <- bplapply(1:nGenes, modelOneGene, seed=seed, 
 		.chooseModel=.chooseModel,
 		.time_transf=.time_transf,
 		.DimpulseModel=.DimpulseModel,
@@ -1660,7 +1537,8 @@
 		.rxnrateSimple=.rxnrateSimple,
 		.makeModel=.makeModel,
 		.makeSimpleModel=.makeSimpleModel,
-		.logLikelihood=.logLikelihood
+		.logLikelihood=.logLikelihood,
+		BPPARAM=BPPARAM
 		)
 	return(paramSpecs)
 }
@@ -1828,6 +1706,12 @@
 
 .polynomialModelP <- .newPointer(.polynomialModel)
 
+chisq <- function(experiment, model, variance=NULL)
+{
+	if( is.null(variance) )  variance <- stats::var(experiment )
+	else if( variance==0 ) variance <- stats::var(experiment )
+	sum((experiment - model )^2/variance )
+}
 
 .chooseModel <- function(tpts, log_shift, experiment, variance=NULL, na.rm=TRUE
 	, sigmoid=TRUE, impulse=TRUE, polynomial=TRUE, nInit=10, nIter=500
@@ -1837,11 +1721,7 @@
 #### to the one that has the gratest pvalue in the chi squared test
 {
 
-	chisq <- function(experiment, model, variance=NULL)
-	{
-		if( is.null(variance) ) variance <- stats::var(experiment )
-		sum((experiment - model )^2/variance )
-	}
+
 
 	chisq.test.default <- function(experiment, model, variance=NULL, df)
 	{
@@ -1868,6 +1748,7 @@
 		initial_values <- runif( 1, min=min(values[1:3])
 			, max=max(values[1:3]))
 		intermediate_values <- values[peak]
+		if( intermediate_values==0 ) intermediate_values <- mean(values[seq(peak-1,peak+1)])
 		end_values <- runif( 1, min=min(values[(ntp-2):ntp])
 			, max=max(values[(ntp-2):ntp]))
 		time_of_first_response  <- tpts[peak-1]
@@ -1963,8 +1844,8 @@
 			, params=mean(experiment, na.rm=TRUE), pval=NA, df=1))
 	}
 	## 
-	if( length(experiment)==2 ) {
-		warning('.chooseModel: only one time point has a finite value. 
+	if( length(experiment)<=2 ) {
+		warning('.chooseModel: less than three time points have a finite value. 
 			Impossible evaluate a variable model.
 			Returning a constant model.')
 		return(list(type='constant', fun=.constantModelP
@@ -2339,59 +2220,65 @@
 		# constant: choose the one with the lower absoulute fold change to be 
 		# constant
 		constant_idx <- 1:nGenes %in% order(abs(log2foldchange))[1:n_constant]
-		params[constant_idx] <- lapply(sampled_val[constant_idx], 
-			function(val) 
-				list(type='constant', fun=.constantModelP , params=val, df=1)
-				)
-		
+		if( any(constant_idx) )
+		{
+			params[constant_idx] <- lapply(sampled_val[constant_idx], 
+				function(val) 
+					list(type='constant', fun=.constantModelP , params=val, df=1)
+					)
+		}
 		# impulse varying, fist guess
 		impulse_idx <- 1:nGenes %in% sample(which(!constant_idx), n_impulse)
-		impulseParamGuess <- lapply(which(impulse_idx), 
-			function(i)
-				generateImpulseParams(tpts, sampled_val[i], log2foldchange[i])
-				)
-		valuesImpulse <- do.call('rbind', lapply(impulseParamGuess, 
-			function(par) .impulseModel(tpts,par)
-			))
-		expectedFC  <- abs(log2foldchange[impulse_idx])
-		simulatedFC <- apply(valuesImpulse, 1, 
-			function(x) diff(log2(range(x)))
-			)
-		# due to the nature of the impulse function, by average the real fold
-		# change (the one generated by the sampled data) is lower than the
-		# one expected. For this reason, we calculate the factor of scale
-		# between the real and expected fold changes and we generate new 
-		# data
-	 	factor_of_correction <- lm(simulatedFC ~ expectedFC)$coefficients[2]
-		params[impulse_idx] <- lapply(
-			which(impulse_idx)
-			, function(i) list(
-				type='impulse'
-				, fun=.impulseModelP
-				, params=generateImpulseParams(
-					tpts 
-					, sampled_val[i]
-					, log2foldchange[i] * factor_of_correction
+		if( any(impulse_idx) ) {
+			impulseParamGuess <- lapply(which(impulse_idx), 
+				function(i)
+					generateImpulseParams(tpts, sampled_val[i], log2foldchange[i])
 					)
-				, df=6
+			valuesImpulse <- do.call('rbind', lapply(impulseParamGuess, 
+				function(par) .impulseModel(tpts,par)
+				))
+			expectedFC  <- abs(log2foldchange[impulse_idx])
+			simulatedFC <- apply(valuesImpulse, 1, 
+				function(x) diff(log2(range(x)))
 				)
-			)
+			# due to the nature of the impulse function, by average the real fold
+			# change (the one generated by the sampled data) is lower than the
+			# one expected. For this reason, we calculate the factor of scale
+			# between the real and expected fold changes and we generate new 
+			# data
+		 	factor_of_correction <- lm(simulatedFC ~ expectedFC)$coefficients[2]
+			params[impulse_idx] <- lapply(
+				which(impulse_idx)
+				, function(i) list(
+					type='impulse'
+					, fun=.impulseModelP
+					, params=generateImpulseParams(
+						tpts 
+						, sampled_val[i]
+						, log2foldchange[i] * factor_of_correction
+						)
+					, df=6
+					)
+				)
+		}
 		
 		# sigmoid
 		sigmoid_idx <- !constant_idx & !impulse_idx
-		params[sigmoid_idx] <- lapply(
-			which(sigmoid_idx)
-			, function(i) list(
-				type='sigmoid'
-				, fun=.sigmoidModelP
-				, params=generateSigmoidParams(
-					tpts
-					, sampled_val[i] 
-					, log2foldchange[i] 
-					)
-				, df=4
-				)			
-			)
+		if( any(sigmoid_idx) ) {
+			params[sigmoid_idx] <- lapply(
+				which(sigmoid_idx)
+				, function(i) list(
+					type='sigmoid'
+					, fun=.sigmoidModelP
+					, params=generateSigmoidParams(
+						tpts
+						, sampled_val[i] 
+						, log2foldchange[i] 
+						)
+					, df=4
+					)			
+				)
+		}
 
 		# # report true foldchanges
 		# simulatedFC <- apply(values, 1, function(x) diff(log2(range(x))))

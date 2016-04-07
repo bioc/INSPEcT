@@ -15,7 +15,7 @@
 #' @param rpkms_total_exons A matrix containing expression levels of total exons
 #' @param rpkms_4su_introns A matrix containing expression levels of 4su introns
 #' @param rpkms_total_introns A matrix containing expression levels of total introns
-#' @param parallelize A logical, if set to TRUE parallelizes the calculation of rates
+#' @param BPPARAM Configuration for BiocParallel parallelization. By default is set to bpparam()
 #' @param totalMedianNorm A logical to perform median normalization over total RNA exons rpkms, it will apply also on introns
 #' @param labeledMedianNorm A logical to perform median normalization over 4sU RNA exons rpkms, it will apply also on introns
 #' @param totalSF A vector storing user defined normalization scale over Total RNA exons and introns rpkms
@@ -29,17 +29,83 @@
 #' data('rpkms', package='INSPEcT')
 #' tpts <- c(0, 1/6, 1/3, 1/2, 1, 2, 4, 8, 16)
 #' tL <- 1/6
-#' mycerIds <- newINSPEcT(tpts, tL, rpkms$rpkms_4su_exons, rpkms$rpkms_total_exons, 
-#'	rpkms$rpkms_4su_introns, rpkms$rpkms_total_introns)
+#' mycerIds <- newINSPEcT(tpts, tL, rpkms$foursu_exons, rpkms$total_exons, 
+#' 	rpkms$foursu_introns, rpkms$total_introns, BPPARAM=SerialParam())
 newINSPEcT <- function(tpts, labeling_time, rpkms_4su_exons, rpkms_total_exons, 
-	rpkms_4su_introns=NULL, rpkms_total_introns=NULL, parallelize=TRUE,
+	rpkms_4su_introns=NULL, rpkms_total_introns=NULL, BPPARAM=bpparam(), # parallelize=TRUE,
 	totalMedianNorm=TRUE, labeledMedianNorm=FALSE, totalSF=NULL, labeledSF=NULL,
 	totalQuantileNorm=FALSE, labeledQuantileNorm=FALSE, simulatedData=FALSE, degDuringPulse=FALSE)
 {
 
 	speedyVar <- function(x) sum((x - mean.default(x))^2)/length(x[-1])
 
+	if( class(rpkms_total_exons)=='data.frame' ) 
+		rpkms_total_exons <- as.matrix(rpkms_total_exons)
+	if( class(rpkms_4su_exons)=='data.frame' ) 
+		rpkms_4su_exons <- as.matrix(rpkms_4su_exons)
+	if( class(rpkms_4su_exons)=='data.frame' ) 
+		rpkms_4su_exons <- as.matrix(rpkms_4su_exons)
+
+
 	## check the input arguments
+	if( !is.numeric(tpts) )
+		stop('newINSPEcT: tpts must be a numeric')
+	if( !is.numeric(labeling_time) )
+		stop('newINSPEcT: labeling_time must be a numeric')
+
+	if( class(rpkms_4su_exons)=='data.frame' ) 
+		rpkms_4su_exons <- as.matrix(rpkms_4su_exons)
+	if( !is.numeric(rpkms_4su_exons) )
+		stop('newINSPEcT: rpkms_4su_exons must be a numeric or a data.frame coercible to numeric')
+
+	if( class(rpkms_total_exons)=='data.frame' ) 
+		rpkms_total_exons <- as.matrix(rpkms_total_exons)
+	if( !is.numeric(rpkms_total_exons) )
+		stop('newINSPEcT: rpkms_total_exons must be a numeric or a data.frame coercible to numeric')
+
+	if( !is.null(rpkms_4su_introns) ) {
+		if( class(rpkms_4su_introns)=='data.frame' ) 
+			rpkms_4su_introns <- as.matrix(rpkms_4su_introns)
+		if( !is.numeric(rpkms_4su_introns) )
+			stop('newINSPEcT: rpkms_4su_introns must be a numeric or a data.frame coercible to numeric')		
+	}
+
+	if( !is.null(rpkms_total_introns) ) {
+		if( class(rpkms_total_introns)=='data.frame' ) 
+			rpkms_total_introns <- as.matrix(rpkms_total_introns)
+		if( !is.numeric(rpkms_total_introns) )
+			stop('newINSPEcT: rpkms_total_introns must be a numeric or a data.frame coercible to numeric')		
+	}
+
+	if( !(is.numeric(totalSF) || is.null(totalSF)) )
+		stop('newINSPEcT: totalSF must be either numeric or NULL')
+	if( !(is.numeric(labeledSF) || is.null(labeledSF)) )
+		stop('newINSPEcT: labeledSF must be either numeric or NULL')
+
+	if( !is.null(totalSF) )
+		if( length(totalSF) != length(unique(tpts)) )
+			stop('newINSPEcT: length of totalSF must equal to length(unique(tpts))')
+	if( !is.null(labeledSF) )
+		if( length(labeledSF) != length(unique(tpts)) )
+			stop('newINSPEcT: length of labeledSF must equal to length(unique(tpts))')
+
+	# if( !is.logical(parallelize) )
+	# 	stop('newINSPEcT: parallelize must be a logical.')
+	if( !class(BPPARAM) %in% sapply(registered(),class) )
+		stop('newINSPEcT: BPPARAM argument not registered.')
+	if( !is.logical(totalMedianNorm) )
+		stop('newINSPEcT: totalMedianNorm must be a logical.')
+	if( !is.logical(labeledMedianNorm) )
+		stop('newINSPEcT: labeledMedianNorm must be a logical.')
+	if( !is.logical(totalQuantileNorm) )
+		stop('newINSPEcT: totalQuantileNorm must be a logical.')
+	if( !is.logical(labeledQuantileNorm) )
+		stop('newINSPEcT: labeledQuantileNorm must be a logical.')
+	if( !is.logical(simulatedData) )
+		stop('newINSPEcT: simulatedData must be a logical.')
+	if( !is.logical(degDuringPulse) )
+		stop('newINSPEcT: degDuringPulse must be a logical.')
+
 	if( length(tpts) != ncol(rpkms_4su_exons) )
 		stop('newINSPEcT: length of tpts is not equal to rpkms matrices coulumns number')
 
@@ -276,7 +342,7 @@ newINSPEcT <- function(tpts, labeling_time, rpkms_4su_exons, rpkms_total_exons,
 			)
 		## estimate the rates
 		outIntEx <- .getRatesAndConcentrationsFromRpkms(totRpkmsIntEx, labeledRpkmsIntEx, tpts
-			, tL=labeling_time, simulatedData=simulatedData, parallelize=parallelize
+			, tL=labeling_time, simulatedData=simulatedData, BPPARAM=BPPARAM
 			, totalMedianNorm=totalMedianNorm, labeledMedianNorm=labeledMedianNorm
 			, totalSF=totalSF, labeledSF=labeledSF, degDuringPulse=degDuringPulse)
 		## set the labeledSF and totalSF, they can be used by "only exons genes" (if present)
@@ -299,7 +365,7 @@ newINSPEcT <- function(tpts, labeling_time, rpkms_4su_exons, rpkms_total_exons,
 			)
 		## estimate the rates, eventually using "labeledSF" and "totalSF" calculated from "introns and exons genes"
 		outOnlyEx <- .getRatesAndConcentrationsFromRpkms(totRpkmsOnlyEx, labeledRpkmsOnlyEx, tpts
-			, tL=labeling_time, simulatedData=simulatedData, parallelize=parallelize
+			, tL=labeling_time, simulatedData=simulatedData, BPPARAM=BPPARAM
 			, totalMedianNorm=totalMedianNorm, labeledMedianNorm=labeledMedianNorm
 			, totalSF=totalSF, labeledSF=labeledSF, degDuringPulse=degDuringPulse)
 	}
@@ -326,6 +392,7 @@ newINSPEcT <- function(tpts, labeling_time, rpkms_4su_exons, rpkms_total_exons,
 				, beta=rbind(outIntEx$rates$beta, outOnlyEx$rates$beta)
 				, gamma=rbind(outIntEx$rates$gamma, outOnlyEx$rates$gamma)
 				)
+			, ratesEstimPrec=rbind(outIntEx$ratesEstimPrec, outOnlyEx$ratesEstimPrec)
 			, geneNames=c(outIntEx$geneNames, outOnlyEx$geneNames)
 			## from here both lists have the same information, pick it up from the first one
 			, tpts=outIntEx$tpts
@@ -342,7 +409,7 @@ newINSPEcT <- function(tpts, labeling_time, rpkms_4su_exons, rpkms_total_exons,
 	## if replicates are available at time zero, compute rate variances
 	t0ix <- originalTpts==originalTpts[1]
 	nRepT0 <- length(which(t0ix))
-	evaluateRateVarAtT0 <- nRepT0>1 & !simulatedData
+	evaluateRateVarAtT0 <- nRepT0>1 # & !simulatedData
 	if( evaluateRateVarAtT0 ) {
 
 		message('Estimating rate variances at time zero...')
@@ -379,6 +446,9 @@ newINSPEcT <- function(tpts, labeling_time, rpkms_4su_exons, rpkms_total_exons,
 		var_a_over_t <- matCov(a^2, 1/t^2) + ( var_a + mean_a^2 )*( var_1_over_t + mean_1_over_t^2 ) -
 			( matCov(a, 1/t) + mean_a*mean_1_over_t )^2
 		var_b <- ifelse(is.na(mean_p), var_a_over_t, var_a_over_t_minus_p)
+		# mask (non-sensed) negative variances
+		var_b[var_b<0] <- NaN
+		var_c[var_c<0] <- NaN
 
 	}
 
@@ -431,6 +501,7 @@ newINSPEcT <- function(tpts, labeling_time, rpkms_4su_exons, rpkms_total_exons,
 	object@labeledSF <- out$labeledSF
 	object@tL <- out$tL	
 	object@ratesFirstGuess <- ratesFirstGuess
+	object@precision <- out$ratesEstimPrec
 
 	if( is.null(rpkms_4su_introns) | is.null(rpkms_total_introns) )
 		object@model@simple <- TRUE

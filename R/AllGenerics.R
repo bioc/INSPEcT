@@ -82,12 +82,12 @@ setGeneric('getModel', function(object)
 #' @rdname getModel
 setGeneric('getModel<-', function(object, value) 
 	standardGeneric('getModel<-'))
-#' Get and set number of cores to be used for the modeling
-setGeneric('nCores', function(object, ...) 
-	standardGeneric('nCores'))
-#' @rdname nCores
-setGeneric('nCores<-', function(object, value) 
-	standardGeneric('nCores<-'))
+# #' Get and set number of cores to be used for the modeling
+# setGeneric('nCores', function(object, ...) 
+# 	standardGeneric('nCores'))
+# #' @rdname nCores
+# setGeneric('nCores<-', function(object, value) 
+# 	standardGeneric('nCores<-'))
 #' A nice plot to see scaling factors used for RNA-seq and 4sU-seq libraries
 setGeneric('sfPlot', function(object) 
 	standardGeneric('sfPlot'))
@@ -99,7 +99,7 @@ setGeneric('ratesFirstGuessVar', function(object, feature)
 	standardGeneric('ratesFirstGuessVar'))
 #' @title Launch the modeling process
 #' @description Launch the modeling process with parameters set with \code{\link{modelingParams}}
-setGeneric('modelRates', function(object, seed=NULL, nCores=NULL, verbose=NULL) 
+setGeneric('modelRates', function(object, seed=NULL, BPPARAM=bpparam(), verbose=NULL) 
 	standardGeneric('modelRates'))
 #' Build the synthetic rates shaped on a dataset
 setGeneric('makeSimModel', function(object, nGenes, newTpts=NULL
@@ -113,16 +113,33 @@ setGeneric('plotGene', function(object, ix, fix.yaxis=FALSE)
 	standardGeneric('plotGene'))
 #' Heatmap that represent the fold changes of all the five features
 setGeneric('inHeatmap', function(object, type='pre-model'
-	, breaks=seq(-1,1,length.out=51), plot_matureRNA=FALSE
-	, absoluteExpression=TRUE, rowLabels=NULL, clustering=TRUE, clustIdx=3:5)
+	, breaks=seq(-1,1,length.out=51)
+	, palette=colorRampPalette(c("green", "black", "firebrick3"))
+	, plot_matureRNA=FALSE, absoluteExpression=TRUE
+	, rowLabels=NULL, clustering=TRUE, clustIdx=3:5)
 	standardGeneric('inHeatmap'))
 
-#############################
-# generics for class TxDb ####
-###############################
+#' Generate an object of class INSPEcT_diffsteady from two objects of class INSPEcT
+setGeneric('compareSteady', function(inspectIds1, inspectIds2) 
+	standardGeneric('compareSteady'))
 
-#' @rdname makeGtfFromDb
-setGeneric( 'makeExonsGtfFromDb' , function( object , type, filename ) standardGeneric( 'makeExonsGtfFromDb' ) )
-#' @rdname makeGtfFromDb
-setGeneric( 'makeIntronsGtfFromDb' , function( object , type, filename ) standardGeneric( 'makeIntronsGtfFromDb' ) )
+##########################################
+# generics for class INSPEcT_diffsteady ####
+##########################################
+
+#' @rdname INSPEcT_diffsteady-class
+setGeneric('synthesis', function(object) standardGeneric('synthesis'))
+#' @rdname INSPEcT_diffsteady-class
+setGeneric('processing', function(object) standardGeneric('processing'))
+#' @rdname INSPEcT_diffsteady-class
+setGeneric('degradation', function(object) standardGeneric('degradation'))
+
+# #############################
+# # generics for class TxDb ####
+# ###############################
+
+# #' @rdname makeGtfFromDb
+# setGeneric( 'makeExonsGtfFromDb' , function( object , type, filename ) standardGeneric( 'makeExonsGtfFromDb' ) )
+# #' @rdname makeGtfFromDb
+# setGeneric( 'makeIntronsGtfFromDb' , function( object , type, filename ) standardGeneric( 'makeIntronsGtfFromDb' ) )
 

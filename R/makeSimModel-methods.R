@@ -18,8 +18,8 @@
 #' data('rpkms', package='INSPEcT')
 #' tpts <- c(0, 1/6, 1/3, 1/2, 1, 2, 4, 8, 16)
 #' tL <- 1/6
-#' mycerIds <- newINSPEcT(tpts, tL, rpkms$rpkms_4su_exons, rpkms$rpkms_total_exons, 
-#'	rpkms$rpkms_4su_introns, rpkms$rpkms_total_introns)
+#' mycerIds <- newINSPEcT(tpts, tL, rpkms$foursu_exons, rpkms$total_exons, 
+#' 	rpkms$foursu_introns, rpkms$total_introns, BPPARAM=SerialParam())
 #' ## generate a synthtic data-set of 10 genes based on the real data-set
 #' simRates <- makeSimModel(mycerIds, 10)
 #' simData <- makeSimDataset(simRates, tpts, 1)
@@ -33,9 +33,11 @@
 #' rocCurve(simRates, simData3rep, cTsh=.2)
 #' ## generate a synthtic data-set of 10 genes based on the real data-set
 #' ## with more replicates and more time points
+#' \dontrun{
 #' newTpts <- c(0, 1/6, 1/3, 1/2, 1, 1.5, 2, 4, 8, 12, 16, 24)
 #' simRates <- makeSimModel(mycerIds, 10, newTpts=newTpts)
 #' simData <- makeSimDataset(simRates, newTpts, 3)
+#' }
 setMethod('makeSimModel', 'INSPEcT', 
 	function(object, nGenes, newTpts=NULL, 
 		probs=c(constant=.5,sigmoid=.3,impulse=.2), na.rm=TRUE, seed=NULL) {
