@@ -1,29 +1,33 @@
-import("methods","Biobase","BiocParallel","pROC", "DESeq2","plgem","SummarizedExperiment","TxDb.Mmusculus.UCSC.mm9.knownGene")
+import("methods","Biobase","BiocParallel","pROC", "DESeq2","plgem","SummarizedExperiment","TxDb.Mmusculus.UCSC.mm9.knownGene","shiny")
 
-importFrom("stats", "median")
+importFrom("stats", "median", "constrOptim", "cor", "qchisq", "sd")
 importFrom("BiocGenerics", "unlist", "plotMA", "invertStrand")
-importFrom("compiler", "cmpfun")
 importFrom("deSolve", "ode")
+importFrom("gdata", "read.xls")
 importFrom("GenomicAlignments", "readGAlignmentPairs", "readGAlignments")
 importFrom("GenomicFeatures","exonsBy","transcriptsBy","intronsByTranscript")
 importFrom("GenomicRanges","reduce","seqnames","start","end","strand","width","findOverlaps")
-importFrom("graphics", "abline", "axis", "image", "layout", "legend","matplot", "par", "points", "smoothScatter", "plot", "segments", "text", "title")
-importFrom("grDevices", "colorRampPalette")
-importFrom("IRanges", "IRanges", "psetdiff")
-importFrom("preprocessCore", "normalize.quantiles")
+importFrom("GenomeInfoDb","seqlengths","seqlevels","seqlevels<-")
+importFrom("graphics", "abline", "axis", "image", "layout", "legend","matplot", "matlines", "mtext", "par", "points", "smoothScatter", "plot", "segments", "text", "title")
+importFrom("grDevices", "colorRampPalette", "dev.off", "pdf", "densCols")
+importFrom("IRanges", "IRanges", "psetdiff", "Views")
 importFrom("rootSolve", "multiroot")
 importFrom("Rsamtools", "ScanBamParam")
 importFrom("S4Vectors","subjectHits","queryHits","subjectLength","elementNROWS")
-importFrom("stats", "approx", "dist", "ecdf", "hclust", "lm","na.omit", "optim", "optimize", "pchisq", "pnorm", "predict", "quantile", "rnorm", "runif", "splinefun", "uniroot", "p.adjust", "pt")
-importFrom("utils", "capture.output", "read.table", "write.table", "head")
+importFrom("stats", "approx", "density", "dist", "ecdf", "hclust", "lm","na.omit", "optim", "optimize", "pchisq", "pnorm", "predict", "quantile", "rnorm", "runif", "splinefun", "uniroot", "p.adjust", "pt")
+importFrom("utils", "capture.output", "read.csv", "read.table", "write.table", "head", "tail", "str")
+importFrom("KernSmooth", "bkde2D")
+importFrom("rtracklayer", "import")
 
-export("newINSPEcT", "runProcessingRateDelay", "runRNAdynamics", "compareSteadyNoNascent", 
-	"quantifyExpressionsFromBAMs", "quantifyExpressionsFromTrCounts", "quantifyExpressionsFromTrAbundance")
-exportMethods( "[", "AIC", "calculateDelta", "calculateTau", "chisqmodel", "chisqtest", "combine", 
-    "compareSteady", "degradation", "dim", "featureNames", "featureNames<-", "geneClass", "getModel", 
-    "getModel<-", "inHeatmap", "labeledSF", "logLik", "makeModelRates", "makeSimDataset", 
-    "makeSimModel", "modelingParams", "modelingParams<-", "modelRates", "modelSelection", "modelSelection<-", 
-    "nGenes", "nTpts", "plotGene", "plotMA", "processing", "processingDelay", "ratePvals", "ratesFirstGuess",
-    "ratesFirstGuessVar", "removeModel", "rocCurve", "rocThresholds", "sfPlot", "show", "split", "synthesis", 
-    "tpts", "viewModelRates")
-exportClasses("INSPEcT", "INSPEcT_model", "INSPEcT_diffsteady")
+export("newINSPEcT", "runINSPEcTGUI", "inspectFromBAM", "inspectFromPCR",
+    "quantifyExpressionsFromBAMs", "quantifyExpressionsFromBWs", "quantifyExpressionsFromTrCounts", 
+    "quantifyExpressionsFromTrAbundance")
+exportMethods( "[", "AIC", "calculateDelta", "calculateRatePvals", "calculateTau", "chisqmodel", "chisqtest", "combine",
+    "compareSteady", "computeConfidenceIntervals", "convergence", "correlationPlot", "degradation", "dim", "featureNames", 
+    "featureNames<-", "geneClass", "inHeatmap", "labeledSF", "logLik", "makeModelRates", "makeOscillatorySimModel", 
+    "makeSimDataset", "makeSimModel", "modelingParams", "modelRates", "modelRatesNF", "modelSelection", 
+    "nGenes", "nTpts", "plotGene", "plotMA", "processing", "processingDelay", "ratePvals", 
+    "ratesFirstGuess","ratesFirstGuessVar", "removeModel", "rocCurve", "rocThresholds", "show", "split", "synthesis", 
+    "tpts", "viewConfidenceIntervals", "viewModelRates", "premature", "mature", "PTratio", "PTreg", "plotPMtrend", "plotPMgene",
+    "compareSteadyNoNascent")
+exportClasses("INSPEcT", "INSPEcT_model", "INSPEcT_diffsteady", "INSPEcT_steadyNoNascent")

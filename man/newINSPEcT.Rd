@@ -4,10 +4,20 @@
 \alias{newINSPEcT}
 \title{Create a new INSPEcT object}
 \usage{
-newINSPEcT(tpts, labeling_time = NULL, nascentExpressions = NULL,
-  matureExpressions, preexisting = FALSE, BPPARAM = bpparam(),
-  labeledSF = NULL, simulatedData = FALSE, degDuringPulse = FALSE,
-  Dmin = 1e-06, Dmax = 10, genesFilter = TRUE)
+newINSPEcT(
+  tpts,
+  labeling_time = NULL,
+  nascentExpressions = NULL,
+  matureExpressions,
+  preexisting = FALSE,
+  BPPARAM = SerialParam(),
+  labeledSF = NULL,
+  simulatedData = FALSE,
+  degDuringPulse = FALSE,
+  Dmin = 1e-06,
+  Dmax = 10,
+  genesFilter = TRUE
+)
 }
 \arguments{
 \item{tpts}{A vector of time points, one for each sample}
@@ -20,7 +30,7 @@ newINSPEcT(tpts, labeling_time = NULL, nascentExpressions = NULL,
 
 \item{preexisting}{A logical, indicating if the mature expression refers to the pre-exising (unlabeled) population. Not implemented yet for the "degDuringPulse" mode.}
 
-\item{BPPARAM}{Configuration for BiocParallel parallelization. By default is set to bpparam()}
+\item{BPPARAM}{Configuration for BiocParallel parallelization. By default is set to SerialParam()}
 
 \item{labeledSF}{A vector storing user defined normalization scale over Nascent RNA exons and introns quantifications}
 

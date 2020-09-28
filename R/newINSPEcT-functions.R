@@ -10,7 +10,7 @@
 #' @param nascentExpressions A list which contains exons and introns expression matrices and variances for the nascent RNA
 #' @param matureExpressions A list which contains exons and introns expression matrices and variances for the mature RNA
 #' @param preexisting A logical, indicating if the mature expression refers to the pre-exising (unlabeled) population. Not implemented yet for the "degDuringPulse" mode.
-#' @param BPPARAM Configuration for BiocParallel parallelization. By default is set to bpparam()
+#' @param BPPARAM Configuration for BiocParallel parallelization. By default is set to SerialParam()
 #' @param labeledSF A vector storing user defined normalization scale over Nascent RNA exons and introns quantifications
 #' @param simulatedData A logical, set to TRUE in case the analysis is on simulated data
 #' @param degDuringPulse A logical, set to TRUE in case of a long labelling time. Also degradation of newly synthesized transcripts will be taken into account
@@ -43,7 +43,7 @@ newINSPEcT <- function(tpts
 					, nascentExpressions = NULL
 					, matureExpressions
 					, preexisting = FALSE
-					, BPPARAM = bpparam()
+					, BPPARAM = SerialParam()
 					, labeledSF = NULL
 					, simulatedData = FALSE
 					, degDuringPulse = FALSE
@@ -368,33 +368,18 @@ newINSPEcT <- function(tpts
 												   , BPPARAM = BPPARAM
 												   , modellingParameters = list(Dmin = Dmin, Dmax = Dmax)
 												   , genesFilter = genesFilter)
+			return(createInspectObject(out, NoNascent=TRUE))
 		} else {
-			na_matrix <- matrix(NaN, nrow(rpkms_total_exons), ncol(rpkms_total_exons))
-			out <- list(
-				tpts = tpts
-				, concentrations = list(
-					total = rpkms_total_exons
-					, total_var = rpkms_total_exons_variances
-					, preMRNA = rpkms_total_introns
-					, preMRNA_var = rpkms_total_introns_variances
-					, labeled_total = na_matrix
-					, labeled_total_var = na_matrix
-					, labeled_preMRNA = na_matrix
-					, labeled_preMRNA_var = na_matrix
-					)
-				, rates = list(
-					alpha = na_matrix 
-					, alpha_var = na_matrix 
-					, beta = na_matrix 
-					, gamma = na_matrix 
-					)
-				, ratesEstimPrec = na_matrix
-				, ratesFirstGuessP = na_matrix[,1]
-				, geneNames = eiGenes
-				)
+			####### generate the INSPEcT_steadyNoNascent-class #########
+			object <- new('INSPEcT_steadyNoNascent')
+			object@sampleNames <- tpts
+			object@geneNames <- rownames(rpkms_total_introns)
+			object@premature <- rpkms_total_introns
+			object@prematureVar <- rpkms_total_introns_variances
+			object@mature <- rpkms_total_exons - rpkms_total_introns
+			object@matureVar <- rpkms_total_exons_variances + rpkms_total_introns_variances
+			return(object)
 		}
-		## return the results in the form of an INSPEcT object.
-		return(createInspectObject(out, NoNascent=TRUE))			
 	} 
 
 	###### Simulated data mode (do not provide nascent introns to the compute of RNA dynamics): 
@@ -775,13 +760,13 @@ createInspectObject <- function(out, NoNascent=FALSE,
 	object@tL <- out$tL	
 	object@ratesFirstGuess <- ratesFirstGuess
 	object@ratesFirstGuessVar <- ratesFirstGuessVar
-	object@precision <- out$ratesEstimPrec
+	# object@precision <- out$ratesEstimPrec
 	object@model@simple <- TRUE
 	object@NoNascent <- NoNascent
 	object@degDuringPulse <- degDuringPulse
 	
 	if( NoNascent ) {
-		object@ratesFirstGuessP <- out$ratesFirstGuessP
+		# object@ratesFirstGuessP <- out$ratesFirstGuessP
 	} else {
 		if( NascentSimple )
 			object@model@simple <- TRUE
@@ -791,7 +776,7 @@ createInspectObject <- function(out, NoNascent=FALSE,
 
 }
 
-RNAdynamicsSimpleDDP <- function(totRpkms, labeledRpkms, labeledSF, tpts, tL, BPPARAM=bpparam()) 
+RNAdynamicsSimpleDDP <- function(totRpkms, labeledRpkms, labeledSF, tpts, tL, BPPARAM=SerialParam()) 
 {
 		
 	## retrieve gene names from rownames of exon total rpkms
@@ -884,9 +869,9 @@ RNAdynamicsSimpleDDP <- function(totRpkms, labeledRpkms, labeledSF, tpts, tL, BP
 	# impute NA values (in case of time course)
 	if( is.numeric(tpts) ) {
 		alphaTC <- do.call('rbind',bplapply(1:nrow(alphaTC), 
-			function(i) impute_na_tc(tpts, alphaTC[i,]), BPPARAM=bpparam()))
+			function(i) impute_na_tc(tpts, alphaTC[i,]), BPPARAM=BPPARAM))
 		betaTC <- do.call('rbind',bplapply(1:nrow(betaTC), 
-			function(i) impute_na_tc(tpts, betaTC[i,]), BPPARAM=bpparam()))		
+			function(i) impute_na_tc(tpts, betaTC[i,]), BPPARAM=BPPARAM))		
 	}
 		
 	## set preMRNA and gamma to NA
@@ -941,7 +926,7 @@ RNAdynamicsSimpleDDP <- function(totRpkms, labeledRpkms, labeledSF, tpts, tL, BP
 	
 }
 
-RNAdynamicsSimple <- function(totRpkms, labeledRpkms, labeledSF, tpts, tL, preexisting, BPPARAM=bpparam()) 
+RNAdynamicsSimple <- function(totRpkms, labeledRpkms, labeledSF, tpts, tL, preexisting, BPPARAM=SerialParam()) 
 {
 		
 	## retrieve gene names from rownames of exon total rpkms
@@ -1028,7 +1013,7 @@ RNAdynamicsSimple <- function(totRpkms, labeledRpkms, labeledSF, tpts, tL, preex
 
 		## impute NA values
 		betaTC <- do.call('rbind',bplapply(1:nrow(betaTC), 
-			function(i) impute_na_tc(tpts, betaTC[i,]), BPPARAM=bpparam()))
+			function(i) impute_na_tc(tpts, betaTC[i,]), BPPARAM=BPPARAM))
 
 	} else {
 
@@ -1115,7 +1100,7 @@ sq.median.resids <- function(sf, P, dP, alpha, gamma) sapply(sf, function(i) {
 	stats::median(resids , na.rm=TRUE)^2
 })
 
-RNAdynamicsDDP <- function(totRpkms, labeledRpkms, tpts, tL, simulatedData=FALSE, BPPARAM=bpparam()) 
+RNAdynamicsDDP <- function(totRpkms, labeledRpkms, tpts, tL, simulatedData=FALSE, BPPARAM=SerialParam()) 
 {
 	
 	## the control during the workflow will be based on the 
@@ -1330,11 +1315,11 @@ RNAdynamicsDDP <- function(totRpkms, labeledRpkms, tpts, tL, simulatedData=FALSE
 	# impute NA values (in case of time course)
 	if( is.numeric(tpts) ) {
 		alphaTC <- do.call('rbind',bplapply(1:nrow(alphaTC), 
-			function(i) impute_na_tc(tpts, alphaTC[i,]), BPPARAM=bpparam()))
+			function(i) impute_na_tc(tpts, alphaTC[i,]), BPPARAM=BPPARAM))
 		betaTC <- do.call('rbind',bplapply(1:nrow(betaTC), 
-			function(i) impute_na_tc(tpts, betaTC[i,]), BPPARAM=bpparam()))
+			function(i) impute_na_tc(tpts, betaTC[i,]), BPPARAM=BPPARAM))
 		gammaTC <- do.call('rbind',bplapply(1:nrow(gammaTC), 
-			function(i) impute_na_tc(tpts, gammaTC[i,]), BPPARAM=bpparam()))
+			function(i) impute_na_tc(tpts, gammaTC[i,]), BPPARAM=BPPARAM))
 	}
 		
 	## return NA variance associated to alphaTC because in this mode 
@@ -1389,7 +1374,7 @@ RNAdynamicsDDP <- function(totRpkms, labeledRpkms, tpts, tL, simulatedData=FALSE
 	
 }
 
-RNAdynamics <- function(totRpkms, labeledRpkms, tpts, tL, simulatedData=FALSE, BPPARAM=bpparam()) 
+RNAdynamics <- function(totRpkms, labeledRpkms, tpts, tL, simulatedData=FALSE, BPPARAM=SerialParam()) 
 {
 	
 	## the control during the workflow will be based on the 
@@ -1426,8 +1411,8 @@ RNAdynamics <- function(totRpkms, labeledRpkms, tpts, tL, simulatedData=FALSE, B
 				} else return(rep(NA, length(tpts)) )
 			}
 		))
-
-		if( ncol(TintDer)>1 ) TintDer <- t(TintDer)
+		# if( ncol(TintDer)>1 ) TintDer <- t(TintDer)
+		TintDer <- t(TintDer)
 		TintDer[, 1] <- 0 
 		TexoDer <- as.matrix(sapply(1:nrow(Texo), 
 			function(i) {
@@ -1437,7 +1422,8 @@ RNAdynamics <- function(totRpkms, labeledRpkms, tpts, tL, simulatedData=FALSE, B
 				} else return(rep(NA, length(tpts)) )
 			}
 		))
-		if( ncol(TexoDer)>1 ) TexoDer <- t(TexoDer)
+		# if( ncol(TexoDer)>1 ) TexoDer <- t(TexoDer)
+		TexoDer <- t(TexoDer)
 		TexoDer[, 1] <- 0
 	# otherwise put the derivatives to zero	
 	} else {
@@ -1509,12 +1495,13 @@ RNAdynamics <- function(totRpkms, labeledRpkms, tpts, tL, simulatedData=FALSE, B
 			betaOut <- inferKBetaFromIntegralWithPre(tpts, alphaTC, Texo, Tint, 
 				maxBeta=quantile(betaT0,na.rm=TRUE,probs=.99)*10,BPPARAM=BPPARAM
 				)
-			betaTC <- cbind(betaT0, 
-				sapply(betaOut, function(x) sapply(x, '[[', 'root'))
-				)
-			betaEstimPrec <- cbind(0,
-				sapply(betaOut, function(x) sapply(x, '[[', 'estim.prec'))
-				)
+			if( nrow(Texo)==1 ) {
+				betaTC <- t(c(betaT0, sapply(betaOut, function(x) sapply(x, '[[', 'root'))))
+				betaEstimPrec <- t(c(0,sapply(betaOut, function(x) sapply(x, '[[', 'estim.prec'))))
+			} else {
+				betaTC <- cbind(betaT0, sapply(betaOut, function(x) sapply(x, '[[', 'root')))
+				betaEstimPrec <- cbind(0,sapply(betaOut, function(x) sapply(x, '[[', 'estim.prec')))
+			}
 		} else {
 			betaTC <- as.matrix(betaT0)
 			betaEstimPrec <- matrix(0, nrow=nrow(betaTC), ncol=ncol(betaTC))
@@ -1532,12 +1519,13 @@ RNAdynamics <- function(totRpkms, labeledRpkms, tpts, tL, simulatedData=FALSE, B
 			gammaOut <- inferKGammaFromIntegral(tpts, alphaTC, Tint, 
 				maxGamma=quantile(gammaT0,na.rm=TRUE,probs=.99)*10, BPPARAM=BPPARAM
 				)
-			gammaTC <- cbind(gammaT0, 
-				sapply(gammaOut, function(x) sapply(x, '[[', 'root'))
-				)
-			gammaEstimPrec <- cbind(0, 
-				sapply(gammaOut, function(x) sapply(x, '[[', 'estim.prec'))
-				)
+			if( nrow(Texo)==1 ) {
+				gammaTC <- t(c(gammaT0, sapply(gammaOut, function(x) sapply(x, '[[', 'root'))))
+				gammaEstimPrec <- t(c(0, sapply(gammaOut, function(x) sapply(x, '[[', 'estim.prec'))))
+			} else {
+				gammaTC <- cbind(gammaT0, sapply(gammaOut, function(x) sapply(x, '[[', 'root')))
+				gammaEstimPrec <- cbind(0, sapply(gammaOut, function(x) sapply(x, '[[', 'estim.prec')))
+			}
 		} else {
 			gammaTC <- as.matrix(gammaT0)
 			gammaEstimPrec <- matrix(0, nrow=nrow(gammaTC), ncol=ncol(gammaTC))
@@ -1545,9 +1533,9 @@ RNAdynamics <- function(totRpkms, labeledRpkms, tpts, tL, simulatedData=FALSE, B
 
 		# ## impute NA values
 		betaTC <- do.call('rbind',bplapply(1:nrow(betaTC), 
-			function(i) impute_na_tc(tpts, betaTC[i,]), BPPARAM=bpparam()))
+			function(i) impute_na_tc(tpts, betaTC[i,]), BPPARAM=BPPARAM))
 		gammaTC <- do.call('rbind',bplapply(1:nrow(gammaTC), 
-			function(i) impute_na_tc(tpts, gammaTC[i,]), BPPARAM=bpparam()))
+			function(i) impute_na_tc(tpts, gammaTC[i,]), BPPARAM=BPPARAM))
 
 		ratesEstimPrec <- betaEstimPrec + gammaEstimPrec
 
@@ -1605,7 +1593,7 @@ RNAdynamics <- function(totRpkms, labeledRpkms, tpts, tL, simulatedData=FALSE, B
 	
 }
 
-RNAdynamicsFromPreex <- function(preexRpkms, labeledRpkms, tpts, tL, BPPARAM=bpparam()) 
+RNAdynamicsFromPreex <- function(preexRpkms, labeledRpkms, tpts, tL, BPPARAM=SerialParam()) 
 {
 			
 	## retrieve gene names from rownames of exon total rpkms
@@ -1633,7 +1621,7 @@ RNAdynamicsFromPreex <- function(preexRpkms, labeledRpkms, tpts, tL, BPPARAM=bpp
 	
 	message('Calculating scaling factor between Pre-existing and Nascent libraries...')
 
-	estimateSFpreexisting <- function(yf, labeledSF, Lint, Lexo, Pint, gammaTC, tL, tpts, j, BPPARAM=bpparam()) {
+	estimateSFpreexisting <- function(yf, labeledSF, Lint, Lexo, Pint, gammaTC, tL, tpts, j, BPPARAM=SerialParam()) {
 
 		labeledSF[j] <- yf
 
@@ -1778,9 +1766,9 @@ RNAdynamicsFromPreex <- function(preexRpkms, labeledRpkms, tpts, tL, BPPARAM=bpp
 
 		# ## impute NA values
 		betaTC <- do.call('rbind',bplapply(1:nrow(betaTC), 
-			function(i) impute_na_tc(tpts, betaTC[i,]), BPPARAM=bpparam()))
+			function(i) impute_na_tc(tpts, betaTC[i,]), BPPARAM=BPPARAM))
 		gammaTC <- do.call('rbind',bplapply(1:nrow(gammaTC), 
-			function(i) impute_na_tc(tpts, gammaTC[i,]), BPPARAM=bpparam()))
+			function(i) impute_na_tc(tpts, gammaTC[i,]), BPPARAM=BPPARAM))
 
 		ratesEstimPrec <- betaEstimPrec + gammaEstimPrec
 
@@ -1949,12 +1937,12 @@ secondStepError_NoNascent <- function(tpts
 
 RNAdynamics_NoNascent <- function(totRpkms
 								, tpts
-								, BPPARAM=bpparam()
+								, BPPARAM=SerialParam()
 								, modellingParameters=list(Dmin = 1e-6, Dmax = 10)
 								, genesFilter
 								)
 {
-
+	
 	Dmin <- modellingParameters$Dmin
 	Dmax <- modellingParameters$Dmax
 
@@ -1980,19 +1968,31 @@ RNAdynamics_NoNascent <- function(totRpkms
 	rownames(k3Prior) <- eiGenes
 
 	# Constant post transcriptional rates and variable post transcriptiona ratio
-	fits <- t(mcsapply(1:nrow(mature), function(row)
-	{
-		unlist(
-			tryCatch(
-	    		optim(par = c(mature[row,1]/premature[row,1]*k3Prior[row,'k3'], k3Prior[row,'k3'])
-	    				   ,fn = secondStepError_NoNascent
-	        			   ,tpts = tpts
-	        			   ,premature = premature[row,]
-	        			   ,mature = mature[row,]
-	        			   ,matureVariance = matureVariance[row,])
-			,error=function(e)list(par = c(NaN,NaN), value = NaN, counts = NaN, convergence = NaN, message = "Optimization error."))[1:4])
-	},BPPARAM = BPPARAM))
-	
+	# (if there is only one gene, constraint for positive rates, i.e. inspectFromPCR)
+	if( nrow(mature)==1 ) {
+		row <- 1
+		fits <- optimPositive(par = c(mature[row,1]/premature[row,1]*k3Prior[row,'k3'], k3Prior[row,'k3'])
+					,fn = secondStepError_NoNascent
+					,tpts = tpts
+					,premature = premature[row,]
+					,mature = mature[row,]
+					,matureVariance = matureVariance[row,])
+		fits <- t(unlist(fits[1:4]))
+	} else {
+		fits <- t(mcsapply(1:nrow(mature), function(row)
+		{
+			unlist(
+				tryCatch(
+					optim(par = c(mature[row,1]/premature[row,1]*k3Prior[row,'k3'], k3Prior[row,'k3'])
+								,fn = secondStepError_NoNascent
+								,tpts = tpts
+								,premature = premature[row,]
+								,mature = mature[row,]
+								,matureVariance = matureVariance[row,])
+					,error=function(e)list(par = c(NaN,NaN), value = NaN, counts = NaN, convergence = NaN, message = "Optimization error."))[1:4])
+		},BPPARAM = BPPARAM))
+	}
+
 	fits[,3] <- pchisq(fits[,3], length(tpts)-3)
 	colnames(fits) <- c('k2','k3','p','counts','gradient','convergence')
 	rownames(fits) <- eiGenes
@@ -2041,12 +2041,13 @@ RNAdynamics_NoNascent <- function(totRpkms
 	betaOut <- inferKBetaFromIntegralWithPre(tpts, alphaTC, total, premature, 
 				maxBeta=quantile(betaT0,na.rm=TRUE,probs=.99)*10,BPPARAM=BPPARAM
 				)
-	betaTC <- cbind(betaT0, 
-		sapply(betaOut, function(x) sapply(x, '[[', 'root'))
-	)
-	betaEstimPrec <- cbind(0,
-		sapply(betaOut, function(x) sapply(x, '[[', 'estim.prec'))
-	)
+	if( nrow(mature)==1 ) {
+		betaTC <- t(c(betaT0, sapply(betaOut, function(x) sapply(x, '[[', 'root'))))
+		betaEstimPrec <- t(c(0,sapply(betaOut, function(x) sapply(x, '[[', 'estim.prec'))))
+	} else {
+		betaTC <- cbind(betaT0, sapply(betaOut, function(x) sapply(x, '[[', 'root')))
+		betaEstimPrec <- cbind(0,sapply(betaOut, function(x) sapply(x, '[[', 'estim.prec')))
+	}
 
 	#Evaluate gamma as constant between intervals
 
@@ -2056,20 +2057,20 @@ RNAdynamics_NoNascent <- function(totRpkms
 	gammaOut <- inferKGammaFromIntegral(tpts, alphaTC, premature, 
 		maxGamma=quantile(gammaT0,na.rm=TRUE,probs=.99)*10, BPPARAM=BPPARAM
 		)
-	gammaTC <- cbind(gammaT0, 
-		sapply(gammaOut, function(x) sapply(x, '[[', 'root'))
-		)
-	gammaEstimPrec <- cbind(0, 
-		sapply(gammaOut, function(x) sapply(x, '[[', 'estim.prec'))
-		)
-
+	if( nrow(mature)==1 ) {
+		gammaTC <- t(c(gammaT0, sapply(gammaOut, function(x) sapply(x, '[[', 'root'))))
+		gammaEstimPrec <- t(c(0, sapply(gammaOut, function(x) sapply(x, '[[', 'estim.prec'))))
+	} else {
+		gammaTC <- cbind(gammaT0, sapply(gammaOut, function(x) sapply(x, '[[', 'root')))
+		gammaEstimPrec <- cbind(0, sapply(gammaOut, function(x) sapply(x, '[[', 'estim.prec')))
+	}
 	# ## impute NA values
 	alphaTC <- do.call('rbind',bplapply(1:nrow(alphaTC), 
-		function(i) impute_na_tc(tpts, alphaTC[i,]), BPPARAM=bpparam()))
+		function(i) impute_na_tc(tpts, alphaTC[i,]), BPPARAM=BPPARAM))
 	betaTC <- do.call('rbind',bplapply(1:nrow(betaTC), 
-		function(i) impute_na_tc(tpts, betaTC[i,]), BPPARAM=bpparam()))
+		function(i) impute_na_tc(tpts, betaTC[i,]), BPPARAM=BPPARAM))
 	gammaTC <- do.call('rbind',bplapply(1:nrow(gammaTC), 
-		function(i) impute_na_tc(tpts, gammaTC[i,]), BPPARAM=bpparam()))
+		function(i) impute_na_tc(tpts, gammaTC[i,]), BPPARAM=BPPARAM))
 
 	## caluculate error through integration of alphaTC, betaTC, gammaTC?
 

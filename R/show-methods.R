@@ -12,13 +12,51 @@ setMethod('show', 'INSPEcT_model', function(object) {
 #' @return Method show for objects of class INSPEcT displays the main features
 #' of the slots ratesFirstGuess, model and modelRates
 setMethod('show', 'INSPEcT', function(object) {
-
-	message('\nslot @ratesFirstGuess:')
-	print(object@ratesFirstGuess)
-	message('\nslot @model:')
-	print(object@model)
-	message('\nslot @modelRates:')
-	print(object@modelRates)
+	
+	tpts <- tpts(object)
+	
+	if( object@NoNascent ) {
+		message("No Nascent RNA mode.")
+	} else {
+		message("Nascent RNA mode.")
+	}
+	
+	if( is.numeric(tpts) ) {
+		message(paste("Time-course INSPEcT object with", length(featureNames(object)), "genes and", length(tpts), "time points."))
+	} else {
+		message(paste("Steady-state INSPEcT object with", length(featureNames(object)), "genes and", length(tpts), "conditions."))
+	}
+	
+	if( object@NF ) {
+		message("Rates first guess and confidence intervals were computed (non-functional framework).")
+		message("Access complete rates with the method ratesFirstGuess.")
+	} else if( length(object@model@ratesSpecs)>0 ) {
+		if( modelingParams(object)$estimateRatesWith == 'int' ) {
+			if( modelingParams(object)$useSigmoidFun ) {
+				message("Rates were modeled using the integrative framework with either constant, sigmoid or impulse functions.")		
+			} else {
+				message("Rates were modeled using the integrative framework with either constant or impulse functions.")		
+			}
+		} else {
+			if( modelingParams(object)$useSigmoidFun ) {
+				message("Rates were modeled using the derivative framework with either constant, sigmoid or impulse functions.")	
+			} else {
+				message("Rates were modeled using the derivative framework with either constant or impulse functions.")	
+			}
+		}
+		message("Access complete rates with the method viewModelRates.")
+		# table(convergence(myc))
+		# quantile(chisqmodel(myc), probs = c(.01,.25,.5,.75,.99))
+	} else {
+		message("Only Rates first guess were computed.")
+		message("Access complete rates with the method ratesFirstGuess.")
+	}
+	
+	if( .hasSlot(object, 'version') ) {
+		message(paste("INSPEcT Version",object@version))
+	} else {
+		message("This object is OBSOLETE and most of the INSPEcT routines will not work on it.")
+	}
 
 	})
 
@@ -60,8 +98,10 @@ setReplaceMethod('featureNames', signature(object='INSPEcT', value='ANY')
 	featureNames(object@ratesFirstGuess) <- value
 	featureNames(object@ratesFirstGuessVar) <- value
 	if( nrow(object@modelRates) > 0 ) {
+		featureNames(object@confidenceIntervals) <- value
 		featureNames(object@modelRates) <- value
 		names(object@model@ratesSpecs) <- value
+		rownames(object@ratePvals) <- value
 	}
 	object
 	})
