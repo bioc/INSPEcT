@@ -53,7 +53,7 @@ inspectFromBAM <- function(txdb, annotation_table, labeling_time=NULL,
 				annotation_table <- switch(file_extension
 							 , 'csv'=read.csv(annotation_table, header=TRUE, stringsAsFactors = FALSE)
 							 , 'tsv'=read.table(annotation_table, sep='\t', header=TRUE, stringsAsFactors = FALSE)
-							 , 'xls'=read.xls(annotation_table, stringsAsFactors = FALSE)
+							 , 'xls'=read_excel(annotation_table)
 				)
 			}
 		} else {
@@ -180,7 +180,7 @@ inspectFromPCR <- function(totalRNA_table, nascentRNA_table=NULL, labeling_time=
 				totalRNA_table <- switch(file_extension
 																	 , 'csv'=read.csv(totalRNA_table, header=TRUE, stringsAsFactors = FALSE)
 																	 , 'tsv'=read.table(totalRNA_table, sep='\t', header=TRUE, stringsAsFactors = FALSE)
-																	 , 'xls'=read.xls(totalRNA_table, stringsAsFactors = FALSE)
+																	 , 'xls'=read_excel(totalRNA_table)
 				)
 			}
 		} else {
@@ -211,7 +211,7 @@ inspectFromPCR <- function(totalRNA_table, nascentRNA_table=NULL, labeling_time=
 					nascentRNA_table <- switch(file_extension
 																		 , 'csv'=read.csv(nascentRNA_table, header=TRUE, stringsAsFactors = FALSE)
 																		 , 'tsv'=read.table(nascentRNA_table, sep='\t', header=TRUE, stringsAsFactors = FALSE)
-																		 , 'xls'=read.xls(nascentRNA_table, stringsAsFactors = FALSE)
+																		 , 'xls'=read_excel(nascentRNA_table)
 					)
 				}
 			} else {
